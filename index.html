@@ -195,9 +195,9 @@
   <header>
     <p class="eyebrow">Mudsock Youth Flag &middot; game day</p>
     <h1>Snap<br>Tracker</h1>
-    <p class="intro prose">The game itself lives in a GitHub repo, not on one phone. Every tap queues instantly
-      here so it never waits on a network &mdash; <strong>Sync</strong> is what sends your taps to the shared
-      file and pulls in anyone else's. Two coaches, two phones, one game: each syncs when they get a moment,
+    <p class="intro prose">The game itself lives in a shared Google Sheet, not on one phone. Every tap queues
+      instantly here so it never waits on a network &mdash; <strong>Sync</strong> is what sends your taps to the
+      sheet and pulls in anyone else's. Two coaches, two phones, one game: each syncs when they get a moment,
       and both end up with the same numbers.</p>
   </header>
 
@@ -289,10 +289,10 @@
     <div class="inner">
       <p class="prose">Every tap is a small timestamped fact &mdash; &ldquo;Max carried,&rdquo; &ldquo;defense
         series, these eight played&rdquo; &mdash; queued on this phone the instant you tap it, so nothing ever
-        waits on a network to feel responsive. Syncing sends your queued facts to the shared file and pulls in
+        waits on a network to feel responsive. Syncing sends your queued facts to the sheet and pulls in
         anyone else's; the app then recomputes every total from the full combined set. Two coaches tapping at
-        the same time never overwrite each other &mdash; their facts just both end up in the file.</p>
-      <p class="prose">If a sync fails &mdash; no signal, expired token &mdash; your taps stay queued right here and
+        the same time never overwrite each other &mdash; their facts just both end up in the sheet.</p>
+      <p class="prose">If a sync fails &mdash; no signal, the sheet's script offline &mdash; your taps stay queued right here and
         nothing is lost; try &ldquo;Sync now&rdquo; again once you're back in range. The one edge case worth
         knowing: if someone else ends the game on their phone before you've synced, your still-queued taps for
         that game can't be merged in after the fact &mdash; the app will tell you if that happens so you can
@@ -313,20 +313,16 @@
   "use strict";
 
   var ROSTER = ["Max", "Mark", "Winter", "Shiloh", "Hayes", "Conway", "Lyon", "Brynn", "Brooks", "Forrest", "Abe"];
-  var KEY = "mudsock.snaptracker.v5";
+  var KEY = "mudsock.snaptracker.v6";
+  var OLD_KEY_V5 = "mudsock.snaptracker.v5";
   var OLD_KEY_V4 = "mudsock.snaptracker.v4";
   var OLD_KEY_V3 = "mudsock.snaptracker.v3";
   var OLD_KEY_V2 = "mudsock.snaptracker.v2";
 
-  // ---- one-time setup: fill these in before uploading to your repo, then never touch again ----
-  // Owner + repo of the public GitHub repo backing this page (not secret).
-  var SYNC_OWNER = "revelant-aj";
-  var SYNC_REPO = "mudsock-snap-tracker";
-  // A fine-grained personal access token scoped to ONLY this repo, with Contents: Read and write.
-  // This page is public, so this token is visible to anyone who views its source — that's the
-  // tradeoff for zero-setup sync. Keep its scope narrow: if it's ever misused, the worst case is
-  // someone overwrites season.json, which is a one-click revert from this repo's commit history.
-  var SYNC_TOKEN = "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";
+  // ---- one-time setup: paste your Apps Script Web App URL below, then never touch again ----
+  // This is a deployment URL (ends in /exec), not a secret — nothing here needs protecting, and
+  // nothing in this file can be auto-revoked the way a committed API token can.
+  var SYNC_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbydrNMAPA3MZLV2Mt85P16jDMWM_-mCqx0bb_EO5Tp45tLEPvHO-ckjj6X7QXe3voF4tw/exec";
 
   function todayISO() {
     var d = new Date();
@@ -407,7 +403,7 @@
     return t;
   }
 
-  /* ---------- persistence (local = queue/cache, GitHub = source of truth) ---------- */
+  /* ---------- persistence (local = queue/cache, the Sheet = source of truth) ---------- */
 
   function load() {
     try {
@@ -423,8 +419,18 @@
           return;
         }
       }
-      // v4 stored a per-device token in localStorage; the token now lives only in the page's
-      // source (SYNC_TOKEN above), so pull forward everything except that.
+      // v4/v5 synced through GitHub with a token; that's gone now (replaced by SYNC_SCRIPT_URL
+      // above), so pull forward the game/season data and drop everything sync-related.
+      var v5 = localStorage.getItem(OLD_KEY_V5);
+      if (v5) {
+        var s5 = JSON.parse(v5);
+        if (s5 && s5.game && s5.game.events) {
+          state.game = s5.game;
+          state.season = s5.season && s5.season.games ? s5.season : { games: [] };
+          recomputeCurrent();
+        }
+        return;
+      }
       var v4 = localStorage.getItem(OLD_KEY_V4);
       if (v4) {
         var s4 = JSON.parse(v4);
@@ -639,32 +645,23 @@
     }).catch(function () { toast("Couldn't save — try again."); });
   }
 
-  /* ---------- GitHub sync ---------- */
-
-  function b64encode(str) { return btoa(unescape(encodeURIComponent(str))); }
-  function b64decode(str) { return decodeURIComponent(escape(atob(str))); }
+  /* ---------- sync (Google Apps Script Web App — no token, nothing secret in this file) ---------- */
 
   function ghConfigured() {
-    return !!(SYNC_OWNER && SYNC_REPO && SYNC_OWNER !== "your-github-username" && SYNC_REPO !== "your-repo-name");
+    return !!(SYNC_SCRIPT_URL && SYNC_SCRIPT_URL.indexOf("script.google.com") !== -1);
   }
-  function rawUrl() { return "https://raw.githubusercontent.com/" + SYNC_OWNER + "/" + SYNC_REPO + "/main/season.json?_=" + Date.now(); }
-  function apiUrl() { return "https://api.github.com/repos/" + SYNC_OWNER + "/" + SYNC_REPO + "/contents/season.json"; }
-  function ghHeaders() { return { "Authorization": "token " + SYNC_TOKEN, "Accept": "application/vnd.github+json" }; }
 
-  // Turns a failed GitHub response into a reason a coach (or whoever's debugging) can actually act on,
-  // instead of a bare status code.
+  // Turns a failed response into a reason a coach (or whoever's debugging) can actually act on.
   function describeGhStatus(status) {
-    if (status === 401) return "bad or expired token";
-    if (status === 403) return "token can't write here — check it's scoped to this repo with Contents: Read and write";
-    if (status === 404) return "repo not found — check SYNC_OWNER/SYNC_REPO in the file";
-    if (status === 422) return "GitHub rejected the request (422)";
-    return "GitHub error " + status;
+    if (status === 401 || status === 403) return "the Apps Script deployment isn't set to run for Anyone — check its access setting";
+    if (status === 404) return "Web App URL not found — check SYNC_SCRIPT_URL in the file";
+    return "server error " + status;
   }
 
   var syncing = false;
   var lastSyncMsg = ghConfigured()
     ? { kind: "clear", msg: "Ready" }
-    : { kind: "warn", msg: "Not set up yet — edit SYNC_OWNER / SYNC_REPO / SYNC_TOKEN near the top of the file" };
+    : { kind: "warn", msg: "Not set up yet — edit SYNC_SCRIPT_URL near the top of the file" };
   function setSyncStatus(kind, msg) { lastSyncMsg = { kind: kind, msg: msg }; renderSyncStatus(); }
 
   // Reconciles a fetched remote payload ({games, current}) into local state.
@@ -673,9 +670,9 @@
     state.season.games = mergeGames(state.season.games, remote.games || []);
     var rc = remote.current;
     if (!rc) return;
-    // Remote's "current" pointer can lag behind a bank this same device just did locally (GET always
-    // happens before PUT) — if that pointed-to game is one we already know we've banked, it's a stale
-    // pointer, not a newer game elsewhere. Don't adopt it; our fresh sheet is the one that's current.
+    // Remote's "current" pointer can lag behind a bank this same device just did locally — if that
+    // pointed-to game is one we already know we've banked, it's a stale pointer, not a newer game
+    // elsewhere. Don't adopt it; our fresh sheet is the one that's current.
     var remoteCurrentAlreadyBanked = state.season.games.some(function (g) { return g.id === rc.gameId; });
     if (rc.gameId === state.game.gameId) {
       var merged = mergeEvents(state.game.events, (rc.events || []).map(function (e) { return Object.assign({}, e, { synced: true }); }));
@@ -703,8 +700,7 @@
 
   function pullFromGitHub() {
     if (!ghConfigured()) return Promise.resolve();
-    return fetch(rawUrl()).then(function (res) {
-      if (res.status === 404) return { games: [], current: null };
+    return fetch(SYNC_SCRIPT_URL).then(function (res) {
       if (!res.ok) throw new Error(describeGhStatus(res.status));
       return res.json();
     }).then(function (remote) {
@@ -713,7 +709,7 @@
       setSyncStatus("clear", "Pulled the latest");
     }).catch(function (err) {
       var reason = (err && err.message) ? err.message : "no signal";
-      setSyncStatus("warn", "Couldn't reach GitHub (" + reason + ") — showing what's queued on this phone");
+      setSyncStatus("warn", "Couldn't reach the sheet (" + reason + ") — showing what's queued on this phone");
     });
   }
 
@@ -725,34 +721,25 @@
     };
   }
 
-  function pushToGitHub(retried) {
-    if (!ghConfigured()) { setSyncStatus("warn", "Not set up yet — edit SYNC_OWNER / SYNC_REPO / SYNC_TOKEN near the top of the file"); return Promise.resolve(); }
+  function pushToGitHub() {
+    if (!ghConfigured()) { setSyncStatus("warn", "Not set up yet — edit SYNC_SCRIPT_URL near the top of the file"); return Promise.resolve(); }
     syncing = true; renderSyncStatus();
-    return fetch(apiUrl(), { headers: ghHeaders() }).then(function (res) {
-      if (res.status === 404) return { sha: null, remote: { games: [], current: null } };
+    var payload = { games: state.season.games, current: currentPayload() };
+    // text/plain sidesteps a CORS preflight Apps Script can't answer — doPost still reads the raw JSON body fine.
+    return fetch(SYNC_SCRIPT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(payload)
+    }).then(function (res) {
       if (!res.ok) throw new Error(describeGhStatus(res.status));
-      return res.json().then(function (body) {
-        var remote = JSON.parse(b64decode(body.content.replace(/\n/g, "")));
-        return { sha: body.sha, remote: remote };
-      });
-    }).then(function (r) {
-      mergeRemoteInto(r.remote);
-      var payload = {
-        message: "Snap Tracker sync — " + todayISO(),
-        content: b64encode(JSON.stringify({ games: state.season.games, current: currentPayload() }, null, 2))
-      };
-      if (r.sha) payload.sha = r.sha;
-      var headers = { "Content-Type": "application/json" };
-      var gh = ghHeaders();
-      for (var k in gh) headers[k] = gh[k];
-      return fetch(apiUrl(), { method: "PUT", headers: headers, body: JSON.stringify(payload) }).then(function (res) {
-        if (res.status === 409 && !retried) return pushToGitHub(true);
-        if (!res.ok) throw new Error(describeGhStatus(res.status));
-        state.game.events.forEach(function (e) { e.synced = true; });
-        syncing = false;
-        save(); render();
-        setSyncStatus("clear", "Synced " + new Date().toLocaleTimeString());
-      });
+      return res.json();
+    }).then(function (remote) {
+      // The server echoes back every event it now has stored, so this merge is what actually marks
+      // this push's events synced (mergeRemoteInto stamps everything present in the server's response).
+      mergeRemoteInto(remote);
+      syncing = false;
+      save(); render();
+      setSyncStatus("clear", "Synced " + new Date().toLocaleTimeString());
     }).catch(function (err) {
       syncing = false;
       save(); render();
@@ -775,7 +762,7 @@
     }
     var unsynced = state.game.events.filter(function (e) { return !e.synced; }).length;
     el.className = syncing ? "status" : (lastSyncMsg.kind === "warn" || unsynced > 0 ? "status" : "status clear");
-    big.textContent = syncing ? "Syncing…" : (unsynced > 0 ? unsynced + " tap(s) not synced yet" : SYNC_OWNER + "/" + SYNC_REPO);
+    big.textContent = syncing ? "Syncing…" : (unsynced > 0 ? unsynced + " tap(s) not synced yet" : "Connected");
     sub.textContent = lastSyncMsg.msg;
   }
 
