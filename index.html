@@ -1,0 +1,939 @@
+<title>Snap Tracker</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+
+<style>
+  :root {
+    --ground: #F4F6F2;
+    --surface: #FFFFFF;
+    --surface-2: #EAEFE9;
+    --ink: #14201A;
+    --ink-2: #3C4A42;
+    --muted: #6B7A70;
+    --line: #D5DED6;
+    --line-strong: #B9C6BB;
+    --accent: #1B6B47;
+    --accent-ink: #FFFFFF;
+    --accent-soft: rgba(27, 107, 71, 0.10);
+    --signal: #C05516;
+    --signal-ink: #FFFFFF;
+    --signal-soft: rgba(192, 85, 22, 0.12);
+
+    --f-display: "Barlow Condensed", "Arial Narrow", Helvetica, sans-serif;
+    --f-body: "IBM Plex Sans", "Segoe UI", Helvetica, Arial, sans-serif;
+    --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0F1513; --surface: #171F1B; --surface-2: #1D2722;
+      --ink: #E8EFE9; --ink-2: #B7C5BB; --muted: #849A8C;
+      --line: #2A3831; --line-strong: #3B4C43;
+      --accent: #4FBF88; --accent-ink: #0F1513; --accent-soft: rgba(79,191,136,0.14);
+      --signal: #E89055; --signal-ink: #0F1513; --signal-soft: rgba(232,144,85,0.16);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #0F1513; --surface: #171F1B; --surface-2: #1D2722;
+    --ink: #E8EFE9; --ink-2: #B7C5BB; --muted: #849A8C;
+    --line: #2A3831; --line-strong: #3B4C43;
+    --accent: #4FBF88; --accent-ink: #0F1513; --accent-soft: rgba(79,191,136,0.14);
+    --signal: #E89055; --signal-ink: #0F1513; --signal-soft: rgba(232,144,85,0.16);
+  }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--f-body);
+    font-size: 16px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .wrap { max-width: 680px; margin: 0 auto; padding: 26px 14px 90px; display: flex; flex-direction: column; gap: 28px; }
+  .prose { max-width: 62ch; }
+  p { margin: 0; }
+  p + p { margin-top: 0.8em; }
+
+  .eyebrow {
+    font-family: var(--f-mono); font-size: 11px; font-weight: 500;
+    letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px;
+  }
+  h1 {
+    font-family: var(--f-display); font-weight: 700;
+    font-size: clamp(40px, 13vw, 60px); line-height: 0.92;
+    text-transform: uppercase; letter-spacing: -0.01em; margin: 0 0 12px;
+  }
+  .intro { font-size: 15.5px; color: var(--ink-2); }
+
+  h2 {
+    font-family: var(--f-display); font-weight: 700;
+    font-size: clamp(22px, 6vw, 28px); line-height: 1.05;
+    text-transform: uppercase; margin: 0; padding-bottom: 9px; border-bottom: 2px solid var(--ink);
+  }
+  section { display: flex; flex-direction: column; gap: 14px; }
+
+  /* ---------- game bar / toggle groups / inputs ---------- */
+  .gamebar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  input[type="date"], input[type="text"], input[type="password"] {
+    font-family: var(--f-mono); font-size: 13px; color: var(--ink);
+    background: var(--surface); border: 1px solid var(--line-strong);
+    padding: 10px 12px; min-height: 42px;
+  }
+  input[type="text"], input[type="password"] { flex: 1 1 130px; min-width: 110px; }
+  .grp { display: inline-flex; border: 1px solid var(--line-strong); overflow: hidden; }
+  .grp button {
+    font-family: var(--f-mono); font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase;
+    padding: 10px 15px; background: var(--surface); color: var(--ink-2);
+    border: 0; cursor: pointer; min-height: 42px;
+  }
+  .grp button[aria-pressed="true"] { background: var(--ink); color: var(--ground); font-weight: 500; }
+
+  /* ---------- status strip ---------- */
+  .status {
+    background: var(--surface); border: 1px solid var(--line);
+    border-left: 4px solid var(--signal); padding: 13px 15px;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .status.clear { border-left-color: var(--accent); }
+  .status .big { font-family: var(--f-display); font-weight: 700; font-size: 21px; text-transform: uppercase; line-height: 1.15; }
+  .status .sub { font-size: 13px; color: var(--muted); font-family: var(--f-mono); }
+
+  /* ---------- player rows ---------- */
+  .roster { display: flex; flex-direction: column; gap: 7px; }
+
+  .row { display: grid; grid-template-columns: 1fr auto auto auto; gap: 6px; align-items: stretch; }
+
+  .tap {
+    display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 10px;
+    background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--line-strong);
+    padding: 11px 11px; min-height: 60px; cursor: pointer; text-align: left;
+    font-family: inherit; color: var(--ink); width: 100%;
+  }
+  .tap:active { background: var(--surface-2); }
+  .row.needs .tap { border-left-color: var(--signal); }
+  .row.locked .tap { opacity: 0.45; cursor: not-allowed; }
+  .row.bench .tap { opacity: 0.5; cursor: not-allowed; }
+  .row.done .tap { border-left-color: var(--accent); }
+
+  .nm { font-family: var(--f-display); font-weight: 700; font-size: 24px; line-height: 1; text-transform: uppercase; }
+  .meta { font-family: var(--f-mono); font-size: 10.5px; color: var(--muted); letter-spacing: 0.03em; margin-top: 3px; }
+  .row.needs .meta, .row.bench .meta { color: var(--signal); }
+
+  .cnum {
+    font-family: var(--f-display); font-weight: 700; font-size: 28px; line-height: 1;
+    font-variant-numeric: tabular-nums; min-width: 24px; text-align: right;
+  }
+  .cnum small { display: block; font-family: var(--f-mono); font-size: 9px; font-weight: 400; letter-spacing: 0.1em; color: var(--muted); text-transform: uppercase; margin-top: 2px; }
+
+  .mini {
+    background: var(--surface); border: 1px solid var(--line); color: var(--ink-2);
+    font-family: var(--f-mono); font-size: 9.5px; letter-spacing: 0.04em; text-transform: uppercase;
+    width: 46px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+    cursor: pointer; padding: 3px;
+  }
+  .mini:active { background: var(--surface-2); }
+  .mini b { font-family: var(--f-display); font-size: 18px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+  .mini.td[data-has="1"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+  .mini.tkl[data-has="1"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+  .mini.sit[data-active="1"] { background: var(--signal-soft); border-color: var(--signal); color: var(--signal); }
+
+  /* ---------- action bar ---------- */
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .btn {
+    font-family: var(--f-mono); font-size: 11.5px; letter-spacing: 0.07em; text-transform: uppercase;
+    padding: 12px 14px; min-height: 44px; cursor: pointer;
+    background: var(--surface); border: 1px solid var(--line-strong); color: var(--ink);
+  }
+  .btn:active { background: var(--surface-2); }
+  .btn.primary { background: var(--ink); border-color: var(--ink); color: var(--ground); }
+  .btn.warn { border-color: var(--signal); color: var(--signal); }
+  .btn[disabled] { opacity: 0.4; cursor: not-allowed; }
+  button:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+
+  .note { font-size: 12.5px; color: var(--muted); font-family: var(--f-mono); line-height: 1.5; }
+
+  /* ---------- attendance chips ---------- */
+  .chiprow { display: flex; flex-wrap: wrap; gap: 8px; }
+  .achip {
+    font-family: var(--f-mono); font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase;
+    padding: 9px 13px; min-height: 40px; border: 1px solid var(--line-strong); background: var(--surface);
+    color: var(--ink-2); cursor: pointer;
+  }
+  .achip[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 500; }
+  .achip[aria-pressed="false"] { opacity: 0.5; text-decoration: line-through; }
+
+  /* ---------- tables ---------- */
+  .scroller { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; min-width: 460px; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); }
+  thead th {
+    font-family: var(--f-mono); font-size: 9.5px; font-weight: 500; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--muted); border-bottom: 2px solid var(--ink); white-space: nowrap;
+  }
+  tbody th { font-family: var(--f-display); font-size: 17px; font-weight: 600; text-transform: uppercase; white-space: nowrap; }
+  td.flag { color: var(--signal); font-weight: 600; font-family: var(--f-mono); font-size: 11.5px; }
+
+  details { background: var(--surface); border: 1px solid var(--line); padding: 0 15px; }
+  summary { font-family: var(--f-display); font-weight: 600; font-size: 17px; text-transform: uppercase; letter-spacing: 0.03em; padding: 13px 0; cursor: pointer; }
+  details[open] summary { border-bottom: 1px solid var(--line); margin-bottom: 13px; }
+  details .inner { padding-bottom: 15px; display: flex; flex-direction: column; gap: 12px; }
+
+  footer { border-top: 1px solid var(--line); padding-top: 18px; font-size: 13px; color: var(--muted); max-width: 62ch; display: flex; flex-direction: column; gap: 7px; }
+
+  .toast {
+    position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%);
+    background: var(--ink); color: var(--ground); font-family: var(--f-mono); font-size: 12.5px;
+    padding: 10px 16px; z-index: 50; max-width: 90vw; text-align: center;
+  }
+  @media (prefers-reduced-motion: no-preference) { .toast { animation: pop 0.18s ease-out; } }
+  @keyframes pop { from { opacity: 0; transform: translate(-50%, 6px); } to { opacity: 1; transform: translate(-50%, 0); } }
+</style>
+
+<div class="wrap">
+
+  <header>
+    <p class="eyebrow">Mudsock Youth Flag &middot; game day</p>
+    <h1>Snap<br>Tracker</h1>
+    <p class="intro prose">The game itself lives in a GitHub repo, not on one phone. Every tap queues instantly
+      here so it never waits on a network &mdash; <strong>Sync</strong> is what sends your taps to the shared
+      file and pulls in anyone else's. Two coaches, two phones, one game: each syncs when they get a moment,
+      and both end up with the same numbers.</p>
+  </header>
+
+  <section>
+    <div class="gamebar">
+      <input type="date" id="gdate" aria-label="Game date">
+      <div class="grp" role="group" aria-label="Which half">
+        <button type="button" id="h1" aria-pressed="true">1st half</button>
+        <button type="button" id="h2" aria-pressed="false">2nd half</button>
+      </div>
+      <div class="grp" role="group" aria-label="Which side">
+        <button type="button" id="sideOff" aria-pressed="true">Offense</button>
+        <button type="button" id="sideDef" aria-pressed="false">Defense</button>
+      </div>
+      <div class="grp" role="group" aria-label="Players on the field">
+        <button type="button" id="size8" aria-pressed="true">8 on field</button>
+        <button type="button" id="size7" aria-pressed="false">7 on field</button>
+      </div>
+    </div>
+
+    <div class="status" id="sitStatus">
+      <span class="big" id="sitBig">&mdash;</span>
+      <span class="sub" id="sitSub">&mdash;</span>
+    </div>
+    <div class="status" id="carryStatus">
+      <span class="big" id="carryBig">&mdash;</span>
+      <span class="sub" id="carrySub">&mdash;</span>
+    </div>
+
+    <div class="roster" id="roster"></div>
+
+    <div class="actions">
+      <button type="button" class="btn primary" id="endseries">End series</button>
+      <button type="button" class="btn" id="undo" disabled>Undo</button>
+      <button type="button" class="btn" id="tohalf2">Start 2nd half</button>
+      <button type="button" class="btn warn" id="endgame">End game &amp; bank it</button>
+      <button type="button" class="btn" id="export" hidden>Export sheet</button>
+    </div>
+    <p class="note">Tap a name = carry (offense only). TD, Tackle, and Sit are the small buttons. Undo only steps
+      back taps that haven't synced yet &mdash; once something's shared, correct it with a new tap instead.</p>
+  </section>
+
+  <section>
+    <h2>Sync</h2>
+    <p class="prose"><strong>End series</strong> and <strong>End game</strong> auto-sync for anyone on this
+      page &mdash; no setup, no sign-in. This button is here for whenever you want to push your taps out or
+      pull in the other coach's by hand.</p>
+    <div class="status clear" id="syncStatus">
+      <span class="big" id="syncBig">&mdash;</span>
+      <span class="sub" id="syncSub">&mdash;</span>
+    </div>
+    <div class="actions">
+      <button type="button" class="btn primary" id="syncNow">Sync now</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Tonight's roster</h2>
+    <p class="prose">Tap a name to mark someone absent. Absent players are skipped by the sit suggestion and
+      keep their numbers for next time.</p>
+    <div class="chiprow" id="attendance"></div>
+  </section>
+
+  <section>
+    <h2>Season so far</h2>
+    <div class="scroller">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Player</th>
+            <th scope="col">Games</th>
+            <th scope="col">Off</th>
+            <th scope="col">Def</th>
+            <th scope="col">Carries</th>
+            <th scope="col">TDs</th>
+            <th scope="col">Tackles</th>
+            <th scope="col"></th>
+          </tr>
+        </thead>
+        <tbody id="seasonBody"></tbody>
+      </table>
+    </div>
+    <p class="note prose">Banked when someone taps &ldquo;End game&rdquo; &mdash; tonight's numbers join this
+      table once that game is synced.</p>
+  </section>
+
+  <details>
+    <summary>How the sync actually works</summary>
+    <div class="inner">
+      <p class="prose">Every tap is a small timestamped fact &mdash; &ldquo;Max carried,&rdquo; &ldquo;defense
+        series, these eight played&rdquo; &mdash; queued on this phone the instant you tap it, so nothing ever
+        waits on a network to feel responsive. Syncing sends your queued facts to the shared file and pulls in
+        anyone else's; the app then recomputes every total from the full combined set. Two coaches tapping at
+        the same time never overwrite each other &mdash; their facts just both end up in the file.</p>
+      <p class="prose">If a sync fails &mdash; no signal, expired token &mdash; your taps stay queued right here and
+        nothing is lost; try &ldquo;Sync now&rdquo; again once you're back in range. The one edge case worth
+        knowing: if someone else ends the game on their phone before you've synced, your still-queued taps for
+        that game can't be merged in after the fact &mdash; the app will tell you if that happens so you can
+        double-check the season table.</p>
+    </div>
+  </details>
+
+  <footer>
+    <p>Built against <strong>Mudsock Youth Football League &mdash; Modifications for Flag Football, revised
+      July 2023</strong>. Enforces Rules D.3, D.4, G and H, plus equal playing time across both sides of the
+      ball at once.</p>
+    <p>Pairs with the <strong>3&ndash;3&ndash;2 Funnel</strong> defensive call sheet.</p>
+  </footer>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var ROSTER = ["Max", "Mark", "Winter", "Shiloh", "Hayes", "Conway", "Lyon", "Brynn", "Brooks", "Forrest", "Abe"];
+  var KEY = "mudsock.snaptracker.v5";
+  var OLD_KEY_V4 = "mudsock.snaptracker.v4";
+  var OLD_KEY_V3 = "mudsock.snaptracker.v3";
+  var OLD_KEY_V2 = "mudsock.snaptracker.v2";
+
+  // ---- one-time setup: fill these in before uploading to your repo, then never touch again ----
+  // Owner + repo of the public GitHub repo backing this page (not secret).
+  var SYNC_OWNER = "revelant-aj";
+  var SYNC_REPO = "mudsock-snap-tracker";
+  // A fine-grained personal access token scoped to ONLY this repo, with Contents: Read and write.
+  // This page is public, so this token is visible to anyone who views its source — that's the
+  // tradeoff for zero-setup sync. Keep its scope narrow: if it's ever misused, the worst case is
+  // someone overwrites season.json, which is a one-click revert from this repo's commit history.
+  var SYNC_TOKEN = "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";
+
+  function todayISO() {
+    var d = new Date();
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  }
+  function newId() { return Date.now() + "-" + Math.random().toString(36).slice(2, 9); }
+
+  function freshGame() {
+    var present = {};
+    ROSTER.forEach(function (n) { present[n] = true; });
+    return {
+      gameId: newId(), date: todayISO(), half: 1, side: "offense", onFieldSize: 8,
+      present: present, events: [], settingsTs: Date.now(),
+      // derived cache, recomputed by recomputeCurrent() — never mutated directly
+      totals: {}, carries: {}, last: null, currentOut: []
+    };
+  }
+
+  var state = { game: freshGame(), season: { games: [] } };
+
+  function sideKey(side) { return side === "offense" ? "off" : "def"; }
+  function totalFor(n) { return state.game.totals[n].off + state.game.totals[n].def; }
+  function presentList() { return ROSTER.filter(function (n) { return state.game.present[n]; }); }
+  function sitCount() { return Math.max(0, presentList().length - state.game.onFieldSize); }
+  function carriesThisHalf(n) { return state.game.half === 1 ? state.game.carries[n].c1 : state.game.carries[n].c2; }
+
+  function suggestOut() {
+    var list = presentList().slice();
+    list.sort(function (a, b) { return totalFor(b) - totalFor(a); });
+    return list.slice(0, sitCount());
+  }
+
+  /* ---------- event log → derived state ---------- */
+
+  function recomputeCurrent() {
+    var totals = {}, carries = {};
+    ROSTER.forEach(function (n) { totals[n] = { off: 0, def: 0 }; carries[n] = { c1: 0, c2: 0, td: 0, tkl: 0 }; });
+    var last = null;
+    var events = state.game.events.slice().sort(function (a, b) { return a.ts - b.ts; });
+    events.forEach(function (e) {
+      if (e.kind === "carry") { carries[e.who][e.half === 1 ? "c1" : "c2"]++; last = e.who; }
+      else if (e.kind === "td") { carries[e.who].td++; }
+      else if (e.kind === "tackle") { carries[e.who].tkl++; }
+      else if (e.kind === "series") { var key = sideKey(e.side); e.playing.forEach(function (p) { if (totals[p]) totals[p][key]++; }); }
+      else if (e.kind === "reset") { last = null; }
+    });
+    state.game.totals = totals;
+    state.game.carries = carries;
+    state.game.last = last;
+  }
+
+  function mergeEvents(a, b) {
+    var map = {};
+    a.forEach(function (e) { map[e.id] = e; });
+    b.forEach(function (e) {
+      var existing = map[e.id];
+      map[e.id] = existing ? Object.assign({}, existing, e, { synced: existing.synced || e.synced }) : e;
+    });
+    return Object.keys(map).map(function (k) { return map[k]; }).sort(function (x, y) { return x.ts - y.ts; });
+  }
+
+  function mergeGames(a, b) {
+    var map = {};
+    a.forEach(function (g) { map[g.id] = g; });
+    b.forEach(function (g) { map[g.id] = g; });
+    return Object.keys(map).map(function (id) { return map[id]; }).sort(function (x, y) {
+      return (x.date || "").localeCompare(y.date || "") || String(x.id).localeCompare(String(y.id));
+    });
+  }
+
+  function seasonTotalsFor(n) {
+    var t = { off: 0, def: 0, carries: 0, td: 0, tkl: 0 };
+    state.season.games.forEach(function (g) {
+      var p = g.players && g.players[n];
+      if (!p) return;
+      t.off += p.off || 0; t.def += p.def || 0; t.carries += p.carries || 0; t.td += p.td || 0; t.tkl += p.tkl || 0;
+    });
+    return t;
+  }
+
+  /* ---------- persistence (local = queue/cache, GitHub = source of truth) ---------- */
+
+  function load() {
+    try {
+      var raw = localStorage.getItem(KEY);
+      if (raw) {
+        var s = JSON.parse(raw);
+        if (s && s.game && s.game.events) {
+          if (s.game.present[ROSTER[0]] === undefined) return;
+          ROSTER.forEach(function (n) { if (s.game.present[n] === undefined) s.game.present[n] = true; });
+          state.game = s.game;
+          state.season = s.season && s.season.games ? s.season : { games: [] };
+          recomputeCurrent();
+          return;
+        }
+      }
+      // v4 stored a per-device token in localStorage; the token now lives only in the page's
+      // source (SYNC_TOKEN above), so pull forward everything except that.
+      var v4 = localStorage.getItem(OLD_KEY_V4);
+      if (v4) {
+        var s4 = JSON.parse(v4);
+        if (s4 && s4.game && s4.game.events) {
+          state.game = s4.game;
+          state.season = s4.season && s4.season.games ? s4.season : { games: [] };
+          recomputeCurrent();
+        }
+        return;
+      }
+      var v3 = localStorage.getItem(OLD_KEY_V3);
+      if (v3) {
+        var s3 = JSON.parse(v3);
+        if (s3 && s3.season && s3.season.games) state.season.games = s3.season.games;
+        return;
+      }
+      var v2 = localStorage.getItem(OLD_KEY_V2);
+      if (v2) {
+        var s2 = JSON.parse(v2);
+        if (s2 && s2.season) {
+          var players = {}, any = false;
+          ROSTER.forEach(function (n) {
+            var s = s2.season[n] || { off: 0, def: 0, carries: 0, td: 0 };
+            players[n] = { off: s.off || 0, def: s.def || 0, carries: s.carries || 0, td: s.td || 0 };
+            if (s.off || s.def || s.carries || s.td) any = true;
+          });
+          if (any) state.season.games = [{ id: "legacy-import", date: "before-sync", players: players }];
+        }
+      }
+    } catch (e) { /* storage blocked or corrupt — start clean */ }
+  }
+
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify({ game: state.game, season: state.season })); }
+    catch (e) { /* private mode — sheet still works this session */ }
+  }
+
+  function toast(msg) {
+    var old = document.querySelector(".toast");
+    if (old) old.remove();
+    var t = document.createElement("div");
+    t.className = "toast";
+    t.setAttribute("role", "status");
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(function () { if (t.parentNode) t.remove(); }, 2400);
+  }
+
+  /* ---------- actions (every action queues an event, then recomputes) ---------- */
+
+  function addCarry(n) {
+    if (state.game.side !== "offense") { toast("Switch to Offense to log a carry"); return; }
+    if (state.game.currentOut.indexOf(n) !== -1) { toast(n + " is sitting this series"); return; }
+    if (state.game.last === n) { toast(n + " went last — no back-to-back carries"); return; }
+    state.game.events.push({ id: newId(), kind: "carry", who: n, half: state.game.half, ts: Date.now(), synced: false });
+    recomputeCurrent();
+    save(); render();
+  }
+
+  function bumpTD(n) {
+    state.game.events.push({ id: newId(), kind: "td", who: n, ts: Date.now(), synced: false });
+    recomputeCurrent();
+    save(); render();
+    toast(n + " — touchdown!");
+  }
+
+  function bumpTackle(n) {
+    state.game.events.push({ id: newId(), kind: "tackle", who: n, ts: Date.now(), synced: false });
+    recomputeCurrent();
+    save(); render();
+    toast(n + " — tackle!");
+  }
+
+  function toggleOut(n) {
+    if (sitCount() === 0) { toast("Nobody needs to sit — everyone plays"); return; }
+    var out = state.game.currentOut;
+    if (out.indexOf(n) !== -1) {
+      out = out.filter(function (x) { return x !== n; });
+      var candidates = presentList().filter(function (x) { return x !== n && out.indexOf(x) === -1; });
+      candidates.sort(function (a, b) { return totalFor(b) - totalFor(a); });
+      if (candidates.length) out.push(candidates[0]);
+    } else {
+      out.push(n);
+      if (out.length > sitCount()) {
+        var others = out.filter(function (x) { return x !== n; });
+        others.sort(function (a, b) { return totalFor(a) - totalFor(b); });
+        var remove = others[0];
+        out = out.filter(function (x) { return x !== remove; });
+      }
+    }
+    state.game.currentOut = out;
+    save(); render();
+  }
+
+  function setSide(side) {
+    if (side === "offense" && state.game.side !== "offense") {
+      state.game.events.push({ id: newId(), kind: "reset", ts: Date.now(), synced: false });
+      recomputeCurrent();
+    }
+    state.game.side = side;
+    save(); render();
+  }
+
+  function setFieldSize(n) {
+    state.game.onFieldSize = n;
+    state.game.settingsTs = Date.now();
+    state.game.currentOut = suggestOut();
+    save(); render();
+  }
+
+  function setHalf(n, viaButton) {
+    if (state.game.half === n) return;
+    state.game.half = n;
+    state.game.settingsTs = Date.now();
+    state.game.events.push({ id: newId(), kind: "reset", ts: Date.now(), synced: false });
+    recomputeCurrent();
+    save(); render();
+    if (viaButton) toast(n === 1 ? "Back to the 1st half" : "2nd half — carry counts reset");
+  }
+
+  function toggleAttendance(n) {
+    state.game.present[n] = !state.game.present[n];
+    state.game.settingsTs = Date.now();
+    state.game.currentOut = suggestOut();
+    save(); render();
+  }
+
+  function endSeries() {
+    var out = state.game.currentOut;
+    var playing = presentList().filter(function (n) { return out.indexOf(n) === -1; });
+    state.game.events.push({ id: newId(), kind: "series", side: state.game.side, playing: playing.slice(), ts: Date.now(), synced: false });
+    recomputeCurrent();
+    state.game.currentOut = suggestOut();
+    save(); render();
+    toast((state.game.side === "offense" ? "Offense" : "Defense") + " series logged");
+    pushToGitHub();
+  }
+
+  function undo() {
+    var events = state.game.events;
+    if (!events.length) return;
+    var last = events[events.length - 1];
+    if (last.synced) { toast("That one's already synced — correct it with a new tap instead"); return; }
+    events.pop();
+    recomputeCurrent();
+    state.game.currentOut = suggestOut();
+    save(); render();
+  }
+
+  function endGame() {
+    var missing = ROSTER.filter(function (n) { return state.game.carries[n].c1 + state.game.carries[n].c2 === 0; });
+    var warn = missing.length ? "\n\n" + missing.join(", ") + " never carried today." : "";
+    if (!confirm("Bank this game into the season and start a fresh sheet?" + warn)) return;
+    var players = {};
+    ROSTER.forEach(function (n) {
+      var g = state.game.carries[n], t = state.game.totals[n];
+      players[n] = { off: t.off, def: t.def, carries: g.c1 + g.c2, td: g.td, tkl: g.tkl };
+    });
+    state.season.games.push({ id: state.game.gameId, date: state.game.date, players: players });
+    state.game = freshGame();
+    recomputeCurrent();
+    state.game.currentOut = suggestOut();
+    save(); render();
+    toast("Banked. Fresh sheet ready.");
+    pushToGitHub();
+  }
+
+  /* ---------- csv ---------- */
+
+  function sheetText() {
+    var lines = ["Mudsock Youth Flag - snap tracker", "Game date," + state.game.date, "",
+      "Player,Off series,Def series,1st half carries,2nd half carries,Total carries,Touchdowns,Tackles"];
+    ROSTER.forEach(function (n) {
+      var g = state.game.carries[n], t = state.game.totals[n];
+      lines.push([n, t.off, t.def, g.c1, g.c2, g.c1 + g.c2, g.td, g.tkl].join(","));
+    });
+    lines.push("", "Season to date (" + state.season.games.length + " games banked)", "Player,Off series,Def series,Carries,Touchdowns,Tackles");
+    ROSTER.forEach(function (n) {
+      var s = seasonTotalsFor(n);
+      lines.push([n, s.off, s.def, s.carries, s.td, s.tkl].join(","));
+    });
+    return lines.join("\n");
+  }
+
+  var downloads = null;
+  if (window.claude && typeof window.claude.use === "function") {
+    window.claude.use("downloads").then(function (d) {
+      if (!d) return;
+      downloads = d;
+      document.getElementById("export").hidden = false;
+    }).catch(function () { /* unavailable — button stays hidden */ });
+  }
+
+  function exportSheet() {
+    if (!downloads) return;
+    var base = "snap-tracker-" + state.game.date;
+    var body = sheetText();
+    downloads.save({ filename: base + ".csv", data: body }).then(function () {
+      toast("Saved.");
+    }).catch(function (err) {
+      var code = err && err.code;
+      if (code === "extension_not_enabled" || code === "rejected_extension") {
+        return downloads.save({ filename: base + ".txt", data: body }).then(function () { toast("Saved as text."); });
+      }
+      if (code === "declined") return;
+      if (code === "unavailable" || code === "not_granted" || code === "capability_disabled" || code === "capability_removed") {
+        document.getElementById("export").hidden = true;
+        toast("Saving isn't available in this view.");
+        return;
+      }
+      toast("Couldn't save — try again.");
+    }).catch(function () { toast("Couldn't save — try again."); });
+  }
+
+  /* ---------- GitHub sync ---------- */
+
+  function b64encode(str) { return btoa(unescape(encodeURIComponent(str))); }
+  function b64decode(str) { return decodeURIComponent(escape(atob(str))); }
+
+  function ghConfigured() {
+    return !!(SYNC_OWNER && SYNC_REPO && SYNC_OWNER !== "your-github-username" && SYNC_REPO !== "your-repo-name");
+  }
+  function rawUrl() { return "https://raw.githubusercontent.com/" + SYNC_OWNER + "/" + SYNC_REPO + "/main/season.json?_=" + Date.now(); }
+  function apiUrl() { return "https://api.github.com/repos/" + SYNC_OWNER + "/" + SYNC_REPO + "/contents/season.json"; }
+  function ghHeaders() { return { "Authorization": "token " + SYNC_TOKEN, "Accept": "application/vnd.github+json" }; }
+
+  var syncing = false;
+  var lastSyncMsg = ghConfigured()
+    ? { kind: "clear", msg: "Ready" }
+    : { kind: "warn", msg: "Not set up yet — edit SYNC_OWNER / SYNC_REPO / SYNC_TOKEN near the top of the file" };
+  function setSyncStatus(kind, msg) { lastSyncMsg = { kind: kind, msg: msg }; renderSyncStatus(); }
+
+  // Reconciles a fetched remote payload ({games, current}) into local state.
+  // Local events not present in remote stay queued (unsynced); remote-only events are adopted and marked synced.
+  function mergeRemoteInto(remote) {
+    state.season.games = mergeGames(state.season.games, remote.games || []);
+    var rc = remote.current;
+    if (!rc) return;
+    // Remote's "current" pointer can lag behind a bank this same device just did locally (GET always
+    // happens before PUT) — if that pointed-to game is one we already know we've banked, it's a stale
+    // pointer, not a newer game elsewhere. Don't adopt it; our fresh sheet is the one that's current.
+    var remoteCurrentAlreadyBanked = state.season.games.some(function (g) { return g.id === rc.gameId; });
+    if (rc.gameId === state.game.gameId) {
+      var merged = mergeEvents(state.game.events, (rc.events || []).map(function (e) { return Object.assign({}, e, { synced: true }); }));
+      state.game.events = merged;
+      if ((rc.settingsTs || 0) > (state.game.settingsTs || 0)) {
+        state.game.half = rc.half;
+        state.game.onFieldSize = rc.onFieldSize;
+        state.game.present = rc.present;
+        state.game.date = rc.date;
+        state.game.settingsTs = rc.settingsTs;
+      }
+    } else if (rc.gameId && !remoteCurrentAlreadyBanked) {
+      var unsynced = state.game.events.filter(function (e) { return !e.synced; }).length;
+      if (unsynced > 0) {
+        toast(unsynced + " unsaved tap(s) couldn't be merged — that game was already banked elsewhere. Check the season table.");
+      }
+      state.game = Object.assign(freshGame(), rc, {
+        events: (rc.events || []).map(function (e) { return Object.assign({}, e, { synced: true }); }),
+        currentOut: []
+      });
+    }
+    recomputeCurrent();
+    state.game.currentOut = suggestOut();
+  }
+
+  function pullFromGitHub() {
+    if (!ghConfigured()) return Promise.resolve();
+    return fetch(rawUrl()).then(function (res) {
+      if (res.status === 404) return { games: [], current: null };
+      if (!res.ok) throw new Error("read failed");
+      return res.json();
+    }).then(function (remote) {
+      mergeRemoteInto(remote);
+      save(); render();
+      setSyncStatus("clear", "Pulled the latest");
+    }).catch(function () {
+      setSyncStatus("warn", "Couldn't reach GitHub — showing what's queued on this phone");
+    });
+  }
+
+  function currentPayload() {
+    return {
+      gameId: state.game.gameId, date: state.game.date, half: state.game.half,
+      onFieldSize: state.game.onFieldSize, present: state.game.present,
+      settingsTs: state.game.settingsTs, events: state.game.events
+    };
+  }
+
+  function pushToGitHub(retried) {
+    if (!ghConfigured()) { setSyncStatus("warn", "Not set up yet — edit SYNC_OWNER / SYNC_REPO / SYNC_TOKEN near the top of the file"); return Promise.resolve(); }
+    syncing = true; renderSyncStatus();
+    return fetch(apiUrl(), { headers: ghHeaders() }).then(function (res) {
+      if (res.status === 404) return { sha: null, remote: { games: [], current: null } };
+      if (!res.ok) throw new Error("read failed: " + res.status);
+      return res.json().then(function (body) {
+        var remote = JSON.parse(b64decode(body.content.replace(/\n/g, "")));
+        return { sha: body.sha, remote: remote };
+      });
+    }).then(function (r) {
+      mergeRemoteInto(r.remote);
+      var payload = {
+        message: "Snap Tracker sync — " + todayISO(),
+        content: b64encode(JSON.stringify({ games: state.season.games, current: currentPayload() }, null, 2))
+      };
+      if (r.sha) payload.sha = r.sha;
+      var headers = { "Content-Type": "application/json" };
+      var gh = ghHeaders();
+      for (var k in gh) headers[k] = gh[k];
+      return fetch(apiUrl(), { method: "PUT", headers: headers, body: JSON.stringify(payload) }).then(function (res) {
+        if (res.status === 409 && !retried) return pushToGitHub(true);
+        if (!res.ok) throw new Error("write failed: " + res.status);
+        state.game.events.forEach(function (e) { e.synced = true; });
+        syncing = false;
+        save(); render();
+        setSyncStatus("clear", "Synced " + new Date().toLocaleTimeString());
+      });
+    }).catch(function () {
+      syncing = false;
+      save(); render();
+      setSyncStatus("warn", "Sync failed — your taps are queued here. Tap Sync now to retry.");
+    });
+  }
+
+  function manualSync() { pushToGitHub(); }
+
+  function renderSyncStatus() {
+    var el = document.getElementById("syncStatus");
+    var big = document.getElementById("syncBig");
+    var sub = document.getElementById("syncSub");
+    if (!ghConfigured()) {
+      el.className = "status";
+      big.textContent = "Not set up";
+      sub.textContent = lastSyncMsg.msg;
+      return;
+    }
+    var unsynced = state.game.events.filter(function (e) { return !e.synced; }).length;
+    el.className = syncing ? "status" : (lastSyncMsg.kind === "warn" || unsynced > 0 ? "status" : "status clear");
+    big.textContent = syncing ? "Syncing…" : (unsynced > 0 ? unsynced + " tap(s) not synced yet" : SYNC_OWNER + "/" + SYNC_REPO);
+    sub.textContent = lastSyncMsg.msg;
+  }
+
+  /* ---------- render ---------- */
+
+  var rosterEl = document.getElementById("roster");
+  var attendanceEl = document.getElementById("attendance");
+  var seasonEl = document.getElementById("seasonBody");
+
+  function render() {
+    document.getElementById("gdate").value = state.game.date;
+    document.getElementById("h1").setAttribute("aria-pressed", state.game.half === 1 ? "true" : "false");
+    document.getElementById("h2").setAttribute("aria-pressed", state.game.half === 2 ? "true" : "false");
+    document.getElementById("sideOff").setAttribute("aria-pressed", state.game.side === "offense" ? "true" : "false");
+    document.getElementById("sideDef").setAttribute("aria-pressed", state.game.side === "defense" ? "true" : "false");
+    document.getElementById("size8").setAttribute("aria-pressed", state.game.onFieldSize === 8 ? "true" : "false");
+    document.getElementById("size7").setAttribute("aria-pressed", state.game.onFieldSize === 7 ? "true" : "false");
+    var lastEv = state.game.events[state.game.events.length - 1];
+    document.getElementById("undo").disabled = !lastEv || !!lastEv.synced;
+    document.getElementById("tohalf2").textContent = state.game.half === 1 ? "Start 2nd half" : "Back to 1st half";
+
+    var sc = sitCount();
+    var sitStatusEl = document.getElementById("sitStatus");
+    var sitBig = document.getElementById("sitBig");
+    var sitSub = document.getElementById("sitSub");
+    if (sc === 0) {
+      sitStatusEl.className = "status clear";
+      sitBig.textContent = "Everyone plays this series";
+      sitSub.textContent = presentList().length + " here, " + state.game.onFieldSize + " on the field";
+    } else {
+      sitStatusEl.className = "status";
+      sitBig.textContent = sc + " sitting this series";
+      sitSub.textContent = state.game.currentOut.join("  ·  ").toLowerCase() + " — tap Sit to swap";
+    }
+
+    var carryStatusEl = document.getElementById("carryStatus");
+    if (state.game.side === "offense") {
+      carryStatusEl.hidden = false;
+      var need = presentList().filter(function (n) { return carriesThisHalf(n) === 0; });
+      var carryBig = document.getElementById("carryBig");
+      var carrySub = document.getElementById("carrySub");
+      if (need.length === 0) {
+        carryStatusEl.className = "status clear";
+        carryBig.textContent = "Everyone has carried";
+        carrySub.textContent = state.game.last ? "last carry: " + state.game.last + " — anyone but him" : "half " + state.game.half;
+      } else {
+        carryStatusEl.className = "status";
+        carryBig.textContent = need.length + (need.length === 1 ? " still needs a carry" : " still need a carry");
+        carrySub.textContent = need.join("  ·  ").toLowerCase();
+      }
+    } else {
+      carryStatusEl.hidden = true;
+    }
+
+    rosterEl.innerHTML = "";
+    presentList().forEach(function (n) {
+      var g = state.game.carries[n];
+      var c = carriesThisHalf(n);
+      var sitting = state.game.currentOut.indexOf(n) !== -1;
+      var lockedByLast = state.game.last === n;
+      var offenseActive = state.game.side === "offense";
+
+      var row = document.createElement("div");
+      var cls = "row";
+      if (sitting) cls += " bench";
+      else if (lockedByLast) cls += " locked";
+      else if (offenseActive && c === 0) cls += " needs";
+      else if (c > 0) cls += " done";
+      row.className = cls;
+
+      var tap = document.createElement("button");
+      tap.type = "button";
+      tap.className = "tap";
+      tap.setAttribute("aria-label", "Log a carry for " + n);
+      var left = document.createElement("span");
+      var nm = document.createElement("span");
+      nm.className = "nm"; nm.textContent = n;
+      var meta = document.createElement("span");
+      meta.className = "meta";
+      var base = "off " + state.game.totals[n].off + " · def " + state.game.totals[n].def;
+      var metaText;
+      if (sitting) metaText = "sitting this series · " + base;
+      else if (lockedByLast) metaText = "went last — ineligible · " + base;
+      else if (offenseActive && c === 0) metaText = "needs a carry · " + base;
+      else metaText = base;
+      meta.textContent = metaText;
+      left.appendChild(nm); left.appendChild(document.createElement("br")); left.appendChild(meta);
+      var num = document.createElement("span");
+      num.className = "cnum";
+      num.textContent = c;
+      var lbl = document.createElement("small"); lbl.textContent = "half " + state.game.half;
+      num.appendChild(lbl);
+      tap.appendChild(left); tap.appendChild(num);
+      tap.addEventListener("click", function () { addCarry(n); });
+
+      var td = document.createElement("button");
+      td.type = "button"; td.className = "mini td"; td.dataset.has = g.td > 0 ? "1" : "0";
+      td.setAttribute("aria-label", "Add a touchdown for " + n);
+      td.innerHTML = "<b>" + g.td + "</b>TD";
+      td.addEventListener("click", function () { bumpTD(n); });
+
+      var tkl = document.createElement("button");
+      tkl.type = "button"; tkl.className = "mini tkl"; tkl.dataset.has = g.tkl > 0 ? "1" : "0";
+      tkl.setAttribute("aria-label", "Add a tackle for " + n);
+      tkl.innerHTML = "<b>" + g.tkl + "</b>TKL";
+      tkl.addEventListener("click", function () { bumpTackle(n); });
+
+      var sit = document.createElement("button");
+      sit.type = "button"; sit.className = "mini sit"; sit.dataset.active = sitting ? "1" : "0";
+      sit.setAttribute("aria-label", (sitting ? "Bring " : "Sit ") + n + (sitting ? " back in" : " out") + " this series");
+      sit.innerHTML = "<b>" + (sitting ? "OUT" : "IN") + "</b>Sit";
+      sit.addEventListener("click", function () { toggleOut(n); });
+
+      row.appendChild(tap); row.appendChild(td); row.appendChild(tkl); row.appendChild(sit);
+      rosterEl.appendChild(row);
+    });
+
+    attendanceEl.innerHTML = "";
+    ROSTER.forEach(function (n) {
+      var chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "achip";
+      chip.setAttribute("aria-pressed", state.game.present[n] ? "true" : "false");
+      chip.textContent = n;
+      chip.addEventListener("click", function () { toggleAttendance(n); });
+      attendanceEl.appendChild(chip);
+    });
+
+    seasonEl.innerHTML = "";
+    ROSTER.forEach(function (n) {
+      var s = seasonTotalsFor(n);
+      var tr = document.createElement("tr");
+      var th = document.createElement("th"); th.scope = "row"; th.textContent = n;
+      tr.appendChild(th);
+      [state.season.games.length, s.off, s.def, s.carries, s.td, s.tkl].forEach(function (v) {
+        var cell = document.createElement("td"); cell.textContent = v; tr.appendChild(cell);
+      });
+      var flag = document.createElement("td");
+      if (state.season.games.length > 0 && s.td === 0) { flag.className = "flag"; flag.textContent = "no TD yet"; }
+      tr.appendChild(flag);
+      seasonEl.appendChild(tr);
+    });
+
+    renderSyncStatus();
+  }
+
+  /* ---------- wiring ---------- */
+
+  document.getElementById("h1").addEventListener("click", function () { setHalf(1, true); });
+  document.getElementById("h2").addEventListener("click", function () { setHalf(2, true); });
+  document.getElementById("sideOff").addEventListener("click", function () { setSide("offense"); });
+  document.getElementById("sideDef").addEventListener("click", function () { setSide("defense"); });
+  document.getElementById("size8").addEventListener("click", function () { setFieldSize(8); });
+  document.getElementById("size7").addEventListener("click", function () { setFieldSize(7); });
+  document.getElementById("tohalf2").addEventListener("click", function () { setHalf(state.game.half === 1 ? 2 : 1, true); });
+  document.getElementById("endseries").addEventListener("click", endSeries);
+  document.getElementById("undo").addEventListener("click", undo);
+  document.getElementById("endgame").addEventListener("click", endGame);
+  document.getElementById("export").addEventListener("click", exportSheet);
+  document.getElementById("syncNow").addEventListener("click", manualSync);
+  document.getElementById("gdate").addEventListener("change", function (e) {
+    state.game.date = e.target.value || todayISO();
+    state.game.settingsTs = Date.now();
+    save();
+  });
+
+  load();
+  recomputeCurrent();
+  if (!state.game.currentOut.length && sitCount() > 0) state.game.currentOut = suggestOut();
+  render();
+  if (ghConfigured()) pullFromGitHub();
+})();
+</script>
